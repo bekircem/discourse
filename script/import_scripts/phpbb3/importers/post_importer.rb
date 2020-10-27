@@ -52,14 +52,19 @@ module ImportScripts::PhpBB3
     end
 
     def map_first_post(row, mapped)
+      mapping = @settings.category_mapping[row[:forum_id]]
+      return if mapping&.[](:skip?)
+
       poll_data = add_poll(row, mapped) if @settings.import_polls
 
-      mapped[:category] = @lookup.category_id_from_imported_category_id(@settings.prefix(row[:forum_id]))
+      mapped[:category] = mapping ? mapping[:category]
+                                  : @lookup.category_id_from_imported_category_id(@settings.prefix(row[:forum_id]))
       mapped[:title] = CGI.unescapeHTML(row[:topic_title]).strip[0...255]
       mapped[:pinned_at] = mapped[:created_at] unless row[:topic_type] == Constants::POST_NORMAL
       mapped[:pinned_globally] = row[:topic_type] == Constants::POST_GLOBAL
       mapped[:views] = row[:topic_views]
       mapped[:post_create_action] = proc do |post|
+        DiscourseTagging.tag_topic_by_names(post.topic, staff_guardian, mapping[:tags]) if mapping&.[](:tags).present?
         @permalink_importer.create_for_topic(post.topic, row[:topic_id]) # skip @settings.prefix because ID is used in permalink generation
         @permalink_importer.create_for_post(post, row[:post_id]) # skip @settings.prefix because ID is used in permalink generation
         @poll_importer.update_poll(row[:topic_id], post, poll_data) if poll_data
@@ -94,6 +99,10 @@ module ImportScripts::PhpBB3
 
       mapped_post[:raw] = poll_raw << "\n\n" << mapped_post[:raw]
       poll_data
+    end
+
+    def staff_guardian
+      @_staff_guardian ||= Guardian.new(Discourse.system_user)
     end
   end
 end

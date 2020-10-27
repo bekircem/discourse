@@ -27,8 +27,14 @@ module ImportScripts::PhpBB3
     def execute
       puts '', "importing from phpBB #{@php_config[:phpbb_version]}"
 
+      if @settings.category_mapping.present?
+        puts "category mapping is present. enabling tagging"
+        SiteSetting.tagging_enabled = true
+      end
+
       import_users
       import_anonymous_users if @settings.import_anonymous_users
+      import_mapped_categories
       import_categories
       import_posts
       import_private_messages if @settings.import_private_messages
@@ -100,6 +106,45 @@ module ImportScripts::PhpBB3
             log_error("Failed to map anonymous user with ID #{row[:user_id]}", e)
           end
         end
+      end
+    end
+
+    def import_mapped_categories
+      puts '', 'creating mapped categories'
+
+      # Build an array of mapped categories and their ancestors. It is later
+      # used to ensure that parent categories are created before children
+      # categories.
+      mapped_categories = []
+      @settings.category_mapping.each do |_, value|
+        next if value[:skip?]
+        value[:category].length.times.each do |idx|
+          mapped_categories << value[:category][0..idx]
+        end
+      end
+      mapped_categories.uniq!
+      mapped_categories.sort! do |a, b|
+        a.length == b.length ? a.join <=> b.join : a.length <=> b.length
+      end
+
+      # Create mapped categories
+      mapped_category_ids = {}
+      res = create_categories(mapped_categories) do |row|
+        *parent_categories, category_name = row
+        {
+          id: row.join(","),
+          name: category_name,
+          parent_category_id: mapped_category_ids[parent_categories],
+          post_create_action: proc do |category|
+            mapped_category_ids[row] = category.id
+          end
+        }
+      end
+
+      # Replace mapped category names with their ID
+      @settings.category_mapping.each do |key, value|
+        next if value[:skip?]
+        value[:category] = @lookup.category_id_from_imported_category_id(value[:category].join(","))
       end
     end
 

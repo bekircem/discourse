@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require 'csv'
 require 'yaml'
+require_relative '../../base'
 
 module ImportScripts::PhpBB3
   class Settings
@@ -8,6 +10,8 @@ module ImportScripts::PhpBB3
       yaml = YAML::load_file(filename)
       Settings.new(yaml)
     end
+
+    attr_reader :category_mapping
 
     attr_reader :import_anonymous_users
     attr_reader :import_attachments
@@ -37,6 +41,8 @@ module ImportScripts::PhpBB3
 
       @site_name = import_settings['site_name']
 
+      @category_mapping = setup_category_mapping(import_settings['category_mapping'])
+
       @import_anonymous_users = import_settings['anonymous_users']
       @import_attachments = import_settings['attachments']
       @import_private_messages = import_settings['private_messages']
@@ -64,6 +70,45 @@ module ImportScripts::PhpBB3
 
     def prefix(val)
       @site_name.present? ? "#{@site_name}:#{val}" : val
+    end
+
+    def setup_category_mapping(filename)
+      return {} if !filename
+
+      mapping = {}
+
+      File.open(filename) do |file|
+        csv = CSV.parse(file)
+        header = csv.shift
+        csv.each do |row|
+          row = header.zip(row).to_h
+
+          category = [
+            row["Map to Discourse category or SKIP"]&.strip,
+            row["Subcategory"]&.strip
+          ]
+
+          if category[0].blank? && category[1].present?
+            puts "parent category is undefined for category (#{row["ID"]})"
+            next
+          end
+
+          category.compact!
+          tags = (row["Tags"] || "").split(",").map(&:strip).compact
+
+          # If no category or tags were specified, this category is left
+          # untouched
+          next if category.blank? && tags.blank?
+
+          mapping[row["ID"].to_i] = if category.any? { |cat| cat == "SKIP" }
+            { skip?: true }
+          else
+            { category: category, tags: tags }
+          end
+        end
+      end
+
+      mapping
     end
   end
 
