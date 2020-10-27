@@ -11,6 +11,7 @@ module ImportScripts::PhpBB3
       Settings.new(yaml)
     end
 
+    attr_reader :site_name
     attr_reader :category_mapping
 
     attr_reader :import_anonymous_users
