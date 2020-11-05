@@ -159,9 +159,9 @@ module ImportScripts::PhpBB3
       # categories.
       mapped_categories = []
       @settings.category_mapping.each do |_, value|
-        next if value[:skip?]
-        value[:category].length.times.each do |idx|
-          mapped_categories << value[:category][0..idx]
+        next if value == :skip
+        value.length.times.each do |idx|
+          mapped_categories << value[0..idx]
         end
       end
       mapped_categories.uniq!
@@ -174,7 +174,7 @@ module ImportScripts::PhpBB3
       res = create_categories(mapped_categories) do |row|
         *parent_categories, category_name = row
         {
-          id: row.join(","),
+          id: @settings.prefix(row.join(",")),
           name: category_name,
           parent_category_id: mapped_category_ids[parent_categories],
           post_create_action: proc do |category|
@@ -185,9 +185,12 @@ module ImportScripts::PhpBB3
 
       # Replace mapped category names with their ID
       @settings.category_mapping.each do |key, value|
-        next if value[:skip?]
-        value[:category] = @lookup.category_id_from_imported_category_id(value[:category].join(","))
+        next if value == :skip
+        @settings.category_mapping[key] = @lookup.category_id_from_imported_category_id(@settings.prefix(value.join(",")))
       end
+
+      puts "category_mapping = #{@settings.category_mapping.inspect}"
+      puts "tags_mapping = #{@settings.tags_mapping.inspect}"
     end
 
     def import_categories
@@ -196,6 +199,7 @@ module ImportScripts::PhpBB3
       importer = @importers.category_importer
 
       create_categories(rows) do |row|
+        next if @settings.category_mapping[row[:forum_id]] == :skip
         importer.map_category(row)
       end
     end

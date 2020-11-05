@@ -13,6 +13,7 @@ module ImportScripts::PhpBB3
 
     attr_reader :site_name
     attr_reader :category_mapping
+    attr_reader :tags_mapping
 
     attr_reader :import_anonymous_users
     attr_reader :import_attachments
@@ -42,7 +43,7 @@ module ImportScripts::PhpBB3
 
       @site_name = import_settings['site_name']
 
-      @category_mapping = setup_category_mapping(import_settings['category_mapping'])
+      @category_mapping, @tags_mapping = setup_mappings(import_settings['category_mapping'])
 
       @import_anonymous_users = import_settings['anonymous_users']
       @import_attachments = import_settings['attachments']
@@ -73,43 +74,52 @@ module ImportScripts::PhpBB3
       @site_name.present? ? "#{@site_name}:#{val}" : val
     end
 
-    def setup_category_mapping(filename)
+    def setup_mappings(filename)
       return {} if !filename
 
-      mapping = {}
+      category_mapping = {}
+      tags_mapping = {}
 
       File.open(filename) do |file|
         csv = CSV.parse(file)
         header = csv.shift
         csv.each do |row|
           row = header.zip(row).to_h
-
-          category = [
-            row["Map to Discourse category or SKIP"]&.strip,
-            row["Subcategory"]&.strip
-          ]
-
-          if category[0].blank? && category[1].present?
-            puts "parent category is undefined for category (#{row["ID"]})"
-            next
+          if !row.has_key?("ID") || row["ID"].blank? ||
+             !row.has_key?("Map to Discourse category or SKIP") || !row.has_key?("Subcategory") ||
+             !row.has_key?("Tags")
+            raise "ID, parent and subcategory or tags are missing: #{row.inspect}"
           end
 
-          category.compact!
+          id = row["ID"].to_i
+          category_1 = (row["Map to Discourse category or SKIP"] || "").strip
+          category_2 = (row["Subcategory"] || "").strip
+          category = [category_1, category_2].filter(&:present?)
+          skip = category.any? { |cat| cat.upcase == "SKIP" }
+
+          if !skip && category_1.blank? && category_2.present?
+            raise "parent category is undefined for category ID = #{id}"
+          end
+
+          if skip
+            category_mapping[id] = :skip
+          elsif category.present?
+            category_mapping[id] = category
+          end
+
           tags = (row["Tags"] || "").split(",").map(&:strip).compact
 
-          # If no category or tags were specified, this category is left
-          # untouched
-          next if category.blank? && tags.blank?
+          if skip && tags.present?
+            raise "category is skipped, but tags are still present"
+          end
 
-          mapping[row["ID"].to_i] = if category.any? { |cat| cat == "SKIP" }
-            { skip?: true }
-          else
-            { category: category, tags: tags }
+          if tags.present?
+            tags_mapping[id] = tags
           end
         end
       end
 
-      mapping
+      [category_mapping, tags_mapping]
     end
   end
 
