@@ -116,7 +116,7 @@ module ImportScripts::PhpBB3
       rows = @database.fetch_groups
 
       create_groups(rows) do |row|
-        next if row[:group_type] != 0
+        next if row[:group_type] == 3
 
         group_name = if @settings.site_name.present?
           "#{@settings.site_name}_#{row[:group_name]}"
