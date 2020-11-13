@@ -1,4 +1,3 @@
-import { schedule } from "@ember/runloop";
 import { ajax } from "discourse/lib/ajax";
 import { replaceSpan } from "discourse/lib/category-hashtags";
 import { TAG_HASHTAG_POSTFIX } from "discourse/lib/tag-hashtags";
@@ -15,20 +14,18 @@ export function linkSeenHashtags($elem) {
 
   const slugs = [...$hashtags.map((_, hashtag) => hashtag.innerText.substr(1))];
 
-  schedule("afterRender", () => {
-    $hashtags.each((index, hashtag) => {
-      let slug = slugs[index];
-      const hasTagSuffix = slug.endsWith(TAG_HASHTAG_POSTFIX);
-      if (hasTagSuffix) {
-        slug = slug.substr(0, slug.length - TAG_HASHTAG_POSTFIX.length);
-      }
+  $hashtags.each((index, hashtag) => {
+    let slug = slugs[index];
+    const hasTagSuffix = slug.endsWith(TAG_HASHTAG_POSTFIX);
+    if (hasTagSuffix) {
+      slug = slug.substr(0, slug.length - TAG_HASHTAG_POSTFIX.length);
+    }
 
-      if (categoryHashtags[slug] && !hasTagSuffix) {
-        replaceSpan($(hashtag), slug, categoryHashtags[slug]);
-      } else if (tagHashtags[slug]) {
-        replaceSpan($(hashtag), slug, tagHashtags[slug]);
-      }
-    });
+    if (categoryHashtags[slug] && !hasTagSuffix) {
+      replaceSpan($(hashtag), slug, categoryHashtags[slug]);
+    } else if (tagHashtags[slug]) {
+      replaceSpan($(hashtag), slug, tagHashtags[slug]);
+    }
   });
 
   return slugs.uniq().filter((slug) => !checkedHashtags.has(slug));
